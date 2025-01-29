@@ -158,7 +158,50 @@ describe("api tests", () => {
 		console.log("New blog posted:", listWithBlogWithoutURL[0]);
 		await api.post("/api/blogs").send(listWithBlogWithoutURL[0]).expect(400);
 	});
+
+	test("delete a post", async () => {
+		const blogs = await api.get("/api/blogs");
+		const originalLength = blogs.body.length;
+		console.log("Length before delete:", originalLength);
+		const id = "5a422a851b54a676234d17f7";
+		console.log("Deleting a post:", id);
+		await api.delete(`/api/blogs/${id}`).expect(204);
+		const blogsAfter = await api.get("/api/blogs");
+		const newLength = blogsAfter.body.length;
+		console.log("Length after delete:", newLength);
+		assert.strictEqual(originalLength - 1, newLength);
+	});
+
+	test("update number of likes", async() => {
+		const blogs = await api.get("/api/blogs");
+		const thirdBlog = blogs.body[2]
+		console.log('Third blog before:', thirdBlog)
+		const addOneLike = {
+			...thirdBlog,
+			likes: thirdBlog.likes + 1
+		}
+		await api
+			.put(`/api/blogs/${thirdBlog.id}`)
+			.send(addOneLike)
+			.expect(200)
+		const blogsAfter = await api.get("/api/blogs");
+		const newThirdBlog = blogsAfter.body[2]
+		console.log('Third blog after:', newThirdBlog)
+		assert.strictEqual(thirdBlog.id, newThirdBlog.id);
+		assert.strictEqual(thirdBlog.likes+1, newThirdBlog.likes);
+	})
 });
+
+// blogRouter.put("/:id", (request, response) => {
+// 	Blog.findByIdAndUpdate(request.params.id, request.body, { new: true, runValidators: true, context: "query" })
+// 		.then((result) => {
+// 			response.json(result);
+// 		})
+// 		.catch((error) => {
+// 			response.status(400).json({ error: error.message });
+// 		});
+// });
+
 
 test("dummy returns one", () => {
 	const blogs = [];
