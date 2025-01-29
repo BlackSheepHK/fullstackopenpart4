@@ -1,27 +1,27 @@
-const { test, describe } = require("node:test");
+const { test, describe, after, beforeEach } = require("node:test");
 const assert = require("node:assert");
 const listHelper = require("../utils/list_helper");
+const mongoose = require("mongoose");
+const supertest = require("supertest");
+const app = require("../app");
+const api = supertest(app);
+const Blog = require("../models/blog");
 
 const emptyList = [];
 const listWithOneBlog = [
 	{
-		_id: "5a422aa71b54a676234d17f8",
 		title: "Go To Statement Considered Harmful",
 		author: "A",
 		url: "https://homepages.cwi.nl/~storm/teaching/reader/Dijkstra68.pdf",
 		likes: 5,
-		__v: 0,
 	},
 ];
-
 const listWithThreeBlogs = [
 	{
-		_id: "5a422aa71b54a676234d17f8",
 		title: "Go To Statement Considered Harmful",
 		author: "A",
 		url: "https://homepages.cwi.nl/~storm/teaching/reader/Dijkstra68.pdf",
 		likes: 5,
-		__v: 0,
 	},
 	{
 		_id: "5a422aa71b54a676234d17f8",
@@ -40,7 +40,6 @@ const listWithThreeBlogs = [
 		__v: 0,
 	},
 ];
-
 const listWithManyBlogs = [
 	{
 		_id: "5a422a851b54a676234d17f7",
@@ -91,6 +90,75 @@ const listWithManyBlogs = [
 		__v: 0,
 	},
 ];
+const listWithBlogWithoutLike = [
+	{
+		title: "Go To Statement Considered Harmful",
+		author: "A",
+		url: "https://homepages.cwi.nl/~storm/teaching/reader/Dijkstra68.pdf",
+	},
+];
+const listWithBlogWithoutAuthor = [
+	{
+		title: "Go To Statement Considered Harmful",
+		url: "https://homepages.cwi.nl/~storm/teaching/reader/Dijkstra68.pdf",
+	},
+];
+const listWithBlogWithoutURL = [
+	{
+		title: "Go To Statement Considered Harmful",
+		author: "A",
+	},
+];
+
+beforeEach(async () => {
+	await Blog.deleteMany({});
+	const promiseArray = listWithManyBlogs.map((blog) => new Blog(blog)).map((blog) => blog.save());
+	await Promise.all(promiseArray);
+});
+
+describe("api tests", () => {
+	test("blogs are returned as json", async () => {
+		await api
+			.get("/api/blogs")
+			.expect(200)
+			.expect("Content-Type", /application\/json/);
+	});
+
+	test("blogs use id as identifier", async () => {
+		const blogs = await api.get("/api/blogs");
+		console.log("Keys:", Object.keys(blogs.body[0]));
+		assert(Object.keys(blogs.body[0]).includes("id"));
+	});
+
+	test("blogs increase by 1 after creation", async () => {
+		const blogs = await api.get("/api/blogs");
+		console.log("Original legnth", blogs.body.length);
+		await api.post("/api/blogs").send(listWithOneBlog[0]);
+		const blogsAfterCreation = await api.get("/api/blogs");
+		console.log("🚀 ~ test ~ blogsAfterCreation:", blogsAfterCreation.body);
+		console.log("Legnth after creation", blogsAfterCreation.body.length);
+		assert.strictEqual(blogs.body.length + 1, blogsAfterCreation.body.length);
+	});
+
+	test("request without likes get 0", async () => {
+		await api.post("/api/blogs").send(listWithBlogWithoutLike[0]);
+		console.log("New blog posted:", listWithBlogWithoutLike[0]);
+		const blogs = await api.get("/api/blogs");
+		const finalBlog = blogs.body.slice(-1)[0];
+		console.log("New blog retrived:", finalBlog);
+		assert.strictEqual(finalBlog.likes, 0);
+	});
+
+	test("request without author", async () => {
+		console.log("New blog posted:", listWithBlogWithoutAuthor[0]);
+		await api.post("/api/blogs").send(listWithBlogWithoutAuthor[0]).expect(400);
+	});
+
+	test("request without url", async () => {
+		console.log("New blog posted:", listWithBlogWithoutURL[0]);
+		await api.post("/api/blogs").send(listWithBlogWithoutURL[0]).expect(400);
+	});
+});
 
 test("dummy returns one", () => {
 	const blogs = [];
@@ -134,39 +202,44 @@ describe("favourite blog", () => {
 });
 
 describe("author with most blogs", () => {
-    test("when there is no item in the list, equals null", () => {
+	test("when there is no item in the list, equals null", () => {
 		const result = listHelper.mostBlogs(emptyList);
 		assert.equal(result, null);
 	});
 
-    test("when list has only one blog, equals that blog's author", () => {
-        const result = listHelper.mostBlogs(listWithOneBlog)
-        console.log("result is", result)
-        assert.deepStrictEqual(result, { author: 'A', blogs: 1 });
-    });
+	test("when list has only one blog, equals that blog's author", () => {
+		const result = listHelper.mostBlogs(listWithOneBlog);
+		console.log("result is", result);
+		assert.deepStrictEqual(result, { author: "A", blogs: 1 });
+	});
 
-    test("when list has many blogs, equals that author with most blogs", () => {
-        const result = listHelper.mostBlogs(listWithManyBlogs)
-        console.log("result is", result)
-        assert.deepStrictEqual(result, { author: 'Robert C. Martin', blogs: 3 });
-    })
-})
+	test("when list has many blogs, equals that author with most blogs", () => {
+		const result = listHelper.mostBlogs(listWithManyBlogs);
+		console.log("result is", result);
+		assert.deepStrictEqual(result, { author: "Robert C. Martin", blogs: 3 });
+	});
+});
 
 describe("author with most likes", () => {
-    test("when there is no item in the list, equals null", () => {
+	test("when there is no item in the list, equals null", () => {
 		const result = listHelper.mostLikes(emptyList);
 		assert.equal(result, null);
 	});
 
-    test("when list has only one blog, equals that blog's author", () => {
-        const result = listHelper.mostLikes(listWithOneBlog)
-        console.log("result is", result)
-        assert.deepStrictEqual(result, { author: 'A', likes: 5 });
-    });
+	test("when list has only one blog, equals that blog's author", () => {
+		const result = listHelper.mostLikes(listWithOneBlog);
+		console.log("result is", result);
+		assert.deepStrictEqual(result, { author: "A", likes: 5 });
+	});
 
-    test("when list has many blogs, equals that author with most likes", () => {
-        const result = listHelper.mostLikes(listWithManyBlogs)
-        console.log("result is", result)
-        assert.deepStrictEqual(result, { author: 'Edsger W. Dijkstra', likes: 17 });
-    })
-})
+	test("when list has many blogs, equals that author with most likes", () => {
+		const result = listHelper.mostLikes(listWithManyBlogs);
+		console.log("result is", result);
+		assert.deepStrictEqual(result, { author: "Edsger W. Dijkstra", likes: 17 });
+	});
+});
+
+after(async () => {
+	await mongoose.connection.close();
+	console.log("Connection closed");
+});
