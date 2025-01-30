@@ -192,16 +192,6 @@ describe("api tests", () => {
 	})
 });
 
-// blogRouter.put("/:id", (request, response) => {
-// 	Blog.findByIdAndUpdate(request.params.id, request.body, { new: true, runValidators: true, context: "query" })
-// 		.then((result) => {
-// 			response.json(result);
-// 		})
-// 		.catch((error) => {
-// 			response.status(400).json({ error: error.message });
-// 		});
-// });
-
 
 test("dummy returns one", () => {
 	const blogs = [];
