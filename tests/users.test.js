@@ -8,6 +8,7 @@ const api = supertest(app);
 const Blog = require("../models/blog");
 const User = require("../models/user");
 let token = "" //Global scope
+let initialBlogId = "" //Global scope
 
 const initialUsers = [
 	{
@@ -30,6 +31,9 @@ const initialUsers = [
 beforeEach(async () => {
 	console.log("Wiping all test users");
 	await User.deleteMany({});
+	console.log("Wiping all test blogs")
+		await Blog.deleteMany({});
+
 	console.log("Creating initial test users");
 	const promiseArray = initialUsers.map(async (user) => {
 		await api.post("/api/users").send(user);
@@ -41,9 +45,23 @@ beforeEach(async () => {
 	const response = await api.post("/api/login").send(user).expect(200)
 	console.log("Login response:", response.body)
 	token = response.body.token
+
+	const newBlog= {
+		title: "Initial test blog by peter3",
+		author: "peter3",
+		url: "https://homepages.cwi.nl/~storm/teaching/reader/Dijkstra68.pdf",
+		likes: 155,
+	}
+	console.log("Creating initial test blog:", newBlog)
+	const createResponse = await api
+		.post("/api/blogs")
+		.set('Authorization', `Bearer ${token}`)
+		.send(newBlog)
+		.expect(201)
+	initialBlogId = createResponse.body.id
 });
 
-describe("api tests for uesrs", () => {
+describe("api tests for users", () => {
 	test("3 initial test users are created", async () => {
 		const users = await api.get("/api/users");
 		console.log("Initial users:", users.body.length);
@@ -112,10 +130,33 @@ describe("api tests for uesrs", () => {
 		}
 		const response = await api
 			.post("/api/blogs")
-			// .set('Authorization', `Bearer ${token}`)
 			.send(newBlog)
         	.expect(401)
 		console.log("Create blog response:", response.body)
+	});
+
+	test("Delete blog as user who created it, expect success", async() => {
+		await api
+			.delete(`/api/blogs/${initialBlogId}`)
+			.set('Authorization', `Bearer ${token}`)
+			.expect(204)
+	});
+
+	test("Delete blog without logging in, expect failure", async() => {
+		await api
+			.delete(`/api/blogs/${initialBlogId}`)
+			.expect(401)
+	});
+
+	test("Delete blog as another user, expect failure", async() => {
+		const user = initialUsers[1]
+		const response = await api.post("/api/login").send(user).expect(200)
+		console.log("Login response:", response.body)
+
+		await api
+			.delete(`/api/blogs/${initialBlogId}`)
+			.set('Authorization', `Bearer ${response.body.token}`)
+			.expect(401)
 	})
 
 });

@@ -6,6 +6,8 @@ const supertest = require("supertest");
 const app = require("../app");
 const api = supertest(app);
 const Blog = require("../models/blog");
+const User = require("../models/user");
+let token = ""; //Global scope
 
 const emptyList = [];
 const listWithOneBlog = [
@@ -24,70 +26,54 @@ const listWithThreeBlogs = [
 		likes: 5,
 	},
 	{
-		_id: "5a422aa71b54a676234d17f8",
 		title: "Go To Statement Considered Harmful",
 		author: "B",
 		url: "https://homepages.cwi.nl/~storm/teaching/reader/Dijkstra68.pdf",
 		likes: 10,
-		__v: 0,
 	},
 	{
-		_id: "5a422aa71b54a676234d17f8",
 		title: "Go To Statement Considered Harmful",
 		author: "C",
 		url: "https://homepages.cwi.nl/~storm/teaching/reader/Dijkstra68.pdf",
 		likes: 15,
-		__v: 0,
 	},
 ];
 const listWithManyBlogs = [
 	{
-		_id: "5a422a851b54a676234d17f7",
 		title: "React patterns",
 		author: "Michael Chan",
 		url: "https://reactpatterns.com/",
 		likes: 7,
-		__v: 0,
 	},
 	{
-		_id: "5a422aa71b54a676234d17f8",
 		title: "Go To Statement Considered Harmful",
 		author: "Edsger W. Dijkstra",
 		url: "http://www.u.arizona.edu/~rubinson/copyright_violations/Go_To_Considered_Harmful.html",
 		likes: 5,
-		__v: 0,
 	},
 	{
-		_id: "5a422b3a1b54a676234d17f9",
 		title: "Canonical string reduction",
 		author: "Edsger W. Dijkstra",
 		url: "http://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD808.html",
 		likes: 12,
-		__v: 0,
 	},
 	{
-		_id: "5a422b891b54a676234d17fa",
 		title: "First class tests",
 		author: "Robert C. Martin",
 		url: "http://blog.cleancoder.com/uncle-bob/2017/05/05/TestDefinitions.htmll",
 		likes: 10,
-		__v: 0,
 	},
 	{
-		_id: "5a422ba71b54a676234d17fb",
 		title: "TDD harms architecture",
 		author: "Robert C. Martin",
 		url: "http://blog.cleancoder.com/uncle-bob/2017/03/03/TDD-Harms-Architecture.html",
 		likes: 0,
-		__v: 0,
 	},
 	{
-		_id: "5a422bc61b54a676234d17fc",
 		title: "Type wars",
 		author: "Robert C. Martin",
 		url: "http://blog.cleancoder.com/uncle-bob/2016/05/01/TypeWars.html",
 		likes: 2,
-		__v: 0,
 	},
 ];
 const listWithBlogWithoutLike = [
@@ -109,14 +95,50 @@ const listWithBlogWithoutURL = [
 		author: "A",
 	},
 ];
+const initialUsers = [
+	{
+		username: "peter1",
+		name: "Peter One",
+		password: "peter123",
+	},
+	{
+		username: "peter2",
+		name: "Peter Two",
+		password: "peter123",
+	},
+	{
+		username: "peter3",
+		name: "Peter Three",
+		password: "peter123",
+	},
+];
 
 beforeEach(async () => {
-	await Blog.deleteMany({});
-	const promiseArray = listWithManyBlogs.map((blog) => new Blog(blog)).map((blog) => blog.save());
+	console.log("Wiping all test users");
+	await User.deleteMany({});
+	console.log("Creating initial test users");
+	const promiseArray = initialUsers.map(async (user) => {
+		await api.post("/api/users").send(user);
+	});
 	await Promise.all(promiseArray);
+
+	const user = initialUsers[2];
+	console.log("Loggin in as:", user);
+	const response = await api.post("/api/login").send(user).expect(200);
+	console.log("Login response:", response.body);
+	token = response.body.token;
+
+	console.log("Wiping all test blogs")
+	await Blog.deleteMany({});
+	console.log("Creating test blogs")
+	const promiseArrayBlogs = listWithManyBlogs.map(async (blog) => {
+		await api.post("/api/blogs").set("Authorization", `Bearer ${token}`).send(blog);
+	});
+	await Promise.all(promiseArrayBlogs);
+	console.log("Creating test blogs successful")
 });
 
-describe("api tests", () => {
+describe("api tests for blogs", () => {
 	test("blogs are returned as json", async () => {
 		await api
 			.get("/api/blogs")
@@ -126,6 +148,7 @@ describe("api tests", () => {
 
 	test("blogs use id as identifier", async () => {
 		const blogs = await api.get("/api/blogs");
+		console.log("blogs.body", blogs.body)
 		console.log("Keys:", Object.keys(blogs.body[0]));
 		assert(Object.keys(blogs.body[0]).includes("id"));
 	});
@@ -133,7 +156,7 @@ describe("api tests", () => {
 	test("blogs increase by 1 after creation", async () => {
 		const blogs = await api.get("/api/blogs");
 		console.log("Original legnth", blogs.body.length);
-		await api.post("/api/blogs").send(listWithOneBlog[0]);
+		await api.post("/api/blogs").set("Authorization", `Bearer ${token}`).send(listWithOneBlog[0]);
 		const blogsAfterCreation = await api.get("/api/blogs");
 		console.log("🚀 ~ test ~ blogsAfterCreation:", blogsAfterCreation.body);
 		console.log("Legnth after creation", blogsAfterCreation.body.length);
@@ -141,7 +164,7 @@ describe("api tests", () => {
 	});
 
 	test("request without likes get 0", async () => {
-		await api.post("/api/blogs").send(listWithBlogWithoutLike[0]);
+		await api.post("/api/blogs").set('Authorization', `Bearer ${token}`).send(listWithBlogWithoutLike[0]);
 		console.log("New blog posted:", listWithBlogWithoutLike[0]);
 		const blogs = await api.get("/api/blogs");
 		const finalBlog = blogs.body.slice(-1)[0];
@@ -151,47 +174,45 @@ describe("api tests", () => {
 
 	test("request without author", async () => {
 		console.log("New blog posted:", listWithBlogWithoutAuthor[0]);
-		await api.post("/api/blogs").send(listWithBlogWithoutAuthor[0]).expect(400);
+		await api.post("/api/blogs").set('Authorization', `Bearer ${token}`).send(listWithBlogWithoutAuthor[0]).expect(400);
 	});
 
 	test("request without url", async () => {
 		console.log("New blog posted:", listWithBlogWithoutURL[0]);
-		await api.post("/api/blogs").send(listWithBlogWithoutURL[0]).expect(400);
+		await api.post("/api/blogs").set('Authorization', `Bearer ${token}`).send(listWithBlogWithoutURL[0]).expect(400);
 	});
 
 	test("delete a post", async () => {
 		const blogs = await api.get("/api/blogs");
 		const originalLength = blogs.body.length;
 		console.log("Length before delete:", originalLength);
-		const id = "5a422a851b54a676234d17f7";
+		const id = blogs.body[0].id;
 		console.log("Deleting a post:", id);
-		await api.delete(`/api/blogs/${id}`).expect(204);
+		await api.delete(`/api/blogs/${id}`).set('Authorization', `Bearer ${token}`).expect(204);
 		const blogsAfter = await api.get("/api/blogs");
 		const newLength = blogsAfter.body.length;
 		console.log("Length after delete:", newLength);
 		assert.strictEqual(originalLength - 1, newLength);
 	});
 
-	test("update number of likes", async() => {
-		const blogs = await api.get("/api/blogs");
-		const thirdBlog = blogs.body[2]
-		console.log('Third blog before:', thirdBlog)
+	test("update number of likes", async () => {
+		const blogs = await Blog.find({});
+		console.log("update number of likes – blogs", blogs)
+		const thirdBlog = blogs[2];
+		console.log("Third blog before:", thirdBlog);
 		const addOneLike = {
-			...thirdBlog,
-			likes: thirdBlog.likes + 1
-		}
-		await api
-			.put(`/api/blogs/${thirdBlog.id}`)
-			.send(addOneLike)
-			.expect(200)
+			...thirdBlog.doc,
+			likes: thirdBlog.likes + 1,
+		};
+		console.log("addOneLike", addOneLike)
+		await api.put(`/api/blogs/${thirdBlog.id}`).send(addOneLike).expect(200);
 		const blogsAfter = await api.get("/api/blogs");
-		const newThirdBlog = blogsAfter.body[2]
-		console.log('Third blog after:', newThirdBlog)
+		const newThirdBlog = blogsAfter.body[2];
+		console.log("Third blog after:", newThirdBlog);
 		assert.strictEqual(thirdBlog.id, newThirdBlog.id);
-		assert.strictEqual(thirdBlog.likes+1, newThirdBlog.likes);
-	})
+		assert.strictEqual(thirdBlog.likes + 1, newThirdBlog.likes);
+	});
 });
-
 
 test("dummy returns one", () => {
 	const blogs = [];
